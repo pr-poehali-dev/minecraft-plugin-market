@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -6,6 +6,10 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { useToast } from '@/hooks/use-toast';
 import Icon from '@/components/ui/icon';
 
 type UserRole = 'free' | 'premium' | 'ultimate';
@@ -25,6 +29,9 @@ interface Resource {
   minecraftVersion: string;
   image: string;
   isNew?: boolean;
+  fileName?: string;
+  fileSize?: string;
+  uploadDate?: string;
 }
 
 const mockResources: Resource[] = [
@@ -66,59 +73,39 @@ const mockResources: Resource[] = [
     downloads: 5234,
     minecraftVersion: '1.20',
     image: '/placeholder.svg'
-  },
-  {
-    id: 4,
-    title: 'Advanced Anticheat',
-    description: 'Надёжная защита от читеров с машинным обучением',
-    author: 'SecurityPro',
-    type: 'paid',
-    access: 'ultimate',
-    price: 2000,
-    rating: 4.9,
-    downloads: 3421,
-    minecraftVersion: '1.20',
-    image: '/placeholder.svg',
-    isNew: true
-  },
-  {
-    id: 5,
-    title: 'Quest Manager',
-    description: 'Система квестов с визуальным редактором',
-    author: 'QuestDev',
-    type: 'free',
-    access: 'premium',
-    rating: 4.3,
-    downloads: 2134,
-    minecraftVersion: '1.16',
-    image: '/placeholder.svg'
-  },
-  {
-    id: 6,
-    title: 'Custom Mobs+',
-    description: 'Создавайте своих уникальных мобов с уникальными способностями',
-    author: 'MobCreator',
-    type: 'paid',
-    access: 'premium',
-    price: 1200,
-    rating: 4.6,
-    downloads: 1567,
-    minecraftVersion: '1.20',
-    image: '/placeholder.svg'
   }
 ];
 
 function Index() {
+  const { toast } = useToast();
   const [currentUser] = useState<{ name: string; role: UserRole; avatar: string }>({
     name: 'Player_2024',
     role: 'premium',
     avatar: '/placeholder.svg'
   });
   
+  const [resources, setResources] = useState<Resource[]>(mockResources);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedVersion, setSelectedVersion] = useState<string>('all');
   const [selectedType, setSelectedType] = useState<string>('all');
   const [activeTab, setActiveTab] = useState('catalog');
+  const [selectedResource, setSelectedResource] = useState<Resource | null>(null);
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [isDetailDialogOpen, setIsDetailDialogOpen] = useState(false);
+  
+  const [newResource, setNewResource] = useState({
+    title: '',
+    description: '',
+    type: 'free' as ResourceType,
+    access: 'all' as ResourceAccess,
+    price: '',
+    minecraftVersion: '1.20',
+    image: null as File | null,
+    file: null as File | null
+  });
+  
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const getRoleBadge = (role: UserRole) => {
     const badges = {
@@ -145,7 +132,67 @@ function Index() {
     return false;
   };
 
-  const filteredResources = mockResources.filter(resource => {
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setNewResource({ ...newResource, image: e.target.files[0] });
+    }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setNewResource({ ...newResource, file: e.target.files[0] });
+    }
+  };
+
+  const handleSubmitResource = () => {
+    if (!newResource.title || !newResource.description || !newResource.image || !newResource.file) {
+      toast({
+        title: 'Ошибка',
+        description: 'Заполните все обязательные поля',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    const imageUrl = URL.createObjectURL(newResource.image);
+    const newResourceData: Resource = {
+      id: resources.length + 1,
+      title: newResource.title,
+      description: newResource.description,
+      author: currentUser.name,
+      type: newResource.type,
+      access: newResource.access,
+      price: newResource.price ? Number(newResource.price) : undefined,
+      rating: 0,
+      downloads: 0,
+      minecraftVersion: newResource.minecraftVersion,
+      image: imageUrl,
+      isNew: true,
+      fileName: newResource.file.name,
+      fileSize: (newResource.file.size / 1024 / 1024).toFixed(2) + ' MB',
+      uploadDate: new Date().toLocaleDateString('ru-RU')
+    };
+
+    setResources([newResourceData, ...resources]);
+    setIsAddDialogOpen(false);
+    setNewResource({
+      title: '',
+      description: '',
+      type: 'free',
+      access: 'all',
+      price: '',
+      minecraftVersion: '1.20',
+      image: null,
+      file: null
+    });
+    
+    toast({
+      title: 'Успешно!',
+      description: 'Ваш ресурс добавлен в каталог'
+    });
+  };
+
+  const filteredResources = resources.filter(resource => {
     const matchesSearch = resource.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
                          resource.description.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesVersion = selectedVersion === 'all' || resource.minecraftVersion === selectedVersion;
@@ -165,7 +212,7 @@ function Index() {
               <h1 className="text-2xl font-bold text-gradient">MineCraft Hub</h1>
             </div>
             
-            <nav className="hidden md:flex items-center gap-6">
+            <nav className="hidden md:flex items-center gap-4">
               <Button variant="ghost" onClick={() => setActiveTab('catalog')}>
                 <Icon name="Package" size={18} className="mr-2" />
                 Каталог
@@ -174,16 +221,168 @@ function Index() {
                 <Icon name="User" size={18} className="mr-2" />
                 Профиль
               </Button>
-              <Button variant="ghost" onClick={() => setActiveTab('purchases')}>
-                <Icon name="ShoppingBag" size={18} className="mr-2" />
-                Покупки
-              </Button>
-              {currentUser.role === 'ultimate' && (
-                <Button variant="ghost" onClick={() => setActiveTab('admin')}>
-                  <Icon name="Shield" size={18} className="mr-2" />
-                  Админ
-                </Button>
-              )}
+              
+              <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button className="gradient-primary">
+                    <Icon name="Plus" size={18} className="mr-2" />
+                    Добавить ресурс
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                  <DialogHeader>
+                    <DialogTitle>Добавить новый ресурс</DialogTitle>
+                    <DialogDescription>
+                      Загрузите свой плагин или сборку в каталог
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-4 py-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="title">Название *</Label>
+                      <Input
+                        id="title"
+                        placeholder="Например: SuperCore Engine"
+                        value={newResource.title}
+                        onChange={(e) => setNewResource({ ...newResource, title: e.target.value })}
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="description">Описание *</Label>
+                      <Textarea
+                        id="description"
+                        placeholder="Опишите возможности вашего ресурса..."
+                        rows={4}
+                        value={newResource.description}
+                        onChange={(e) => setNewResource({ ...newResource, description: e.target.value })}
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>Тип</Label>
+                        <Select value={newResource.type} onValueChange={(value: ResourceType) => setNewResource({ ...newResource, type: value })}>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="free">Бесплатный</SelectItem>
+                            <SelectItem value="paid">Платный</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Доступ</Label>
+                        <Select value={newResource.access} onValueChange={(value: ResourceAccess) => setNewResource({ ...newResource, access: value })}>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">Для всех</SelectItem>
+                            <SelectItem value="premium">Premium</SelectItem>
+                            <SelectItem value="ultimate">Ultimate</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>Версия Minecraft</Label>
+                        <Select value={newResource.minecraftVersion} onValueChange={(value) => setNewResource({ ...newResource, minecraftVersion: value })}>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="1.20">1.20</SelectItem>
+                            <SelectItem value="1.16">1.16</SelectItem>
+                            <SelectItem value="1.12">1.12</SelectItem>
+                            <SelectItem value="1.8">1.8</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      {newResource.type === 'paid' && (
+                        <div className="space-y-2">
+                          <Label htmlFor="price">Цена (₽)</Label>
+                          <Input
+                            id="price"
+                            type="number"
+                            placeholder="1000"
+                            value={newResource.price}
+                            onChange={(e) => setNewResource({ ...newResource, price: e.target.value })}
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Изображение превью *</Label>
+                      <div
+                        className="border-2 border-dashed border-border rounded-lg p-6 text-center cursor-pointer hover:border-primary transition-colors"
+                        onClick={() => imageInputRef.current?.click()}
+                      >
+                        {newResource.image ? (
+                          <div className="space-y-2">
+                            <img
+                              src={URL.createObjectURL(newResource.image)}
+                              alt="Preview"
+                              className="max-h-48 mx-auto rounded-lg"
+                            />
+                            <p className="text-sm text-muted-foreground">{newResource.image.name}</p>
+                          </div>
+                        ) : (
+                          <div className="space-y-2">
+                            <Icon name="Image" size={48} className="mx-auto text-muted-foreground" />
+                            <p className="text-sm text-muted-foreground">Нажмите для выбора изображения</p>
+                          </div>
+                        )}
+                      </div>
+                      <input
+                        ref={imageInputRef}
+                        type="file"
+                        accept="image/*"
+                        onChange={handleImageChange}
+                        className="hidden"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Файл плагина/сборки *</Label>
+                      <div
+                        className="border-2 border-dashed border-border rounded-lg p-6 text-center cursor-pointer hover:border-primary transition-colors"
+                        onClick={() => fileInputRef.current?.click()}
+                      >
+                        {newResource.file ? (
+                          <div className="space-y-2">
+                            <Icon name="FileArchive" size={48} className="mx-auto text-green-500" />
+                            <p className="text-sm font-semibold">{newResource.file.name}</p>
+                            <p className="text-xs text-muted-foreground">{(newResource.file.size / 1024 / 1024).toFixed(2)} MB</p>
+                          </div>
+                        ) : (
+                          <div className="space-y-2">
+                            <Icon name="Upload" size={48} className="mx-auto text-muted-foreground" />
+                            <p className="text-sm text-muted-foreground">Нажмите для выбора файла (.jar, .zip)</p>
+                          </div>
+                        )}
+                      </div>
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept=".jar,.zip"
+                        onChange={handleFileChange}
+                        className="hidden"
+                      />
+                    </div>
+
+                    <Button className="w-full gradient-primary" onClick={handleSubmitResource}>
+                      <Icon name="Check" size={18} className="mr-2" />
+                      Опубликовать ресурс
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
             </nav>
 
             <div className="flex items-center gap-3">
@@ -246,10 +445,14 @@ function Index() {
               {filteredResources.map((resource, index) => (
                 <Card 
                   key={resource.id} 
-                  className={`hover-scale overflow-hidden border-border/50 backdrop-blur-sm ${
+                  className={`hover-scale overflow-hidden border-border/50 backdrop-blur-sm cursor-pointer ${
                     resource.isNew ? 'animate-pulse-glow' : ''
                   }`}
                   style={{ animationDelay: `${index * 100}ms` }}
+                  onClick={() => {
+                    setSelectedResource(resource);
+                    setIsDetailDialogOpen(true);
+                  }}
                 >
                   <div className="relative h-48 bg-gradient-accent overflow-hidden">
                     <img src={resource.image} alt={resource.title} className="w-full h-full object-cover opacity-80" />
@@ -278,7 +481,7 @@ function Index() {
                     <div className="flex items-center justify-between text-sm">
                       <div className="flex items-center gap-1 text-yellow-500">
                         <Icon name="Star" size={16} />
-                        <span className="font-semibold">{resource.rating}</span>
+                        <span className="font-semibold">{resource.rating || '—'}</span>
                       </div>
                       <div className="flex items-center gap-1 text-muted-foreground">
                         <Icon name="Download" size={16} />
@@ -296,13 +499,13 @@ function Index() {
                     {canAccess(resource.access) ? (
                       <>
                         {resource.type === 'paid' && (
-                          <Button className="flex-1 gradient-primary">
+                          <Button className="flex-1 gradient-primary" onClick={(e) => e.stopPropagation()}>
                             <Icon name="ShoppingCart" size={16} className="mr-2" />
                             {resource.price}₽
                           </Button>
                         )}
                         {resource.type === 'free' && (
-                          <Button className="flex-1 bg-green-600 hover:bg-green-700">
+                          <Button className="flex-1 bg-green-600 hover:bg-green-700" onClick={(e) => e.stopPropagation()}>
                             <Icon name="Download" size={16} className="mr-2" />
                             Скачать
                           </Button>
@@ -314,7 +517,7 @@ function Index() {
                         Нужен {resource.access === 'ultimate' ? 'Ultimate' : 'Premium'}
                       </Button>
                     )}
-                    <Button variant="outline" size="icon">
+                    <Button variant="outline" size="icon" onClick={(e) => e.stopPropagation()}>
                       <Icon name="Heart" size={16} />
                     </Button>
                   </CardFooter>
@@ -346,21 +549,21 @@ function Index() {
                   <Card className="bg-muted/50">
                     <CardContent className="pt-6 text-center">
                       <Icon name="Package" size={32} className="mx-auto mb-2 text-primary" />
-                      <div className="text-3xl font-bold">12</div>
+                      <div className="text-3xl font-bold">{resources.filter(r => r.author === currentUser.name).length}</div>
                       <div className="text-sm text-muted-foreground">Загружено ресурсов</div>
                     </CardContent>
                   </Card>
                   <Card className="bg-muted/50">
                     <CardContent className="pt-6 text-center">
                       <Icon name="Download" size={32} className="mx-auto mb-2 text-gaming-blue" />
-                      <div className="text-3xl font-bold">3.2K</div>
+                      <div className="text-3xl font-bold">0</div>
                       <div className="text-sm text-muted-foreground">Скачиваний</div>
                     </CardContent>
                   </Card>
                   <Card className="bg-muted/50">
                     <CardContent className="pt-6 text-center">
                       <Icon name="Star" size={32} className="mx-auto mb-2 text-yellow-500" />
-                      <div className="text-3xl font-bold">4.7</div>
+                      <div className="text-3xl font-bold">—</div>
                       <div className="text-sm text-muted-foreground">Средний рейтинг</div>
                     </CardContent>
                   </Card>
@@ -369,18 +572,6 @@ function Index() {
                 <div className="space-y-3">
                   <h3 className="text-xl font-bold">Преимущества {getRoleBadge(currentUser.role).label}</h3>
                   <ul className="space-y-2">
-                    {currentUser.role === 'free' && (
-                      <>
-                        <li className="flex items-center gap-2">
-                          <Icon name="Check" size={18} className="text-green-500" />
-                          <span>Доступ к бесплатным ресурсам</span>
-                        </li>
-                        <li className="flex items-center gap-2">
-                          <Icon name="X" size={18} className="text-red-500" />
-                          <span>Платные ресурсы недоступны</span>
-                        </li>
-                      </>
-                    )}
                     {currentUser.role === 'premium' && (
                       <>
                         <li className="flex items-center gap-2">
@@ -394,26 +585,6 @@ function Index() {
                         <li className="flex items-center gap-2">
                           <Icon name="Check" size={18} className="text-green-500" />
                           <span>Приоритетная поддержка</span>
-                        </li>
-                      </>
-                    )}
-                    {currentUser.role === 'ultimate' && (
-                      <>
-                        <li className="flex items-center gap-2">
-                          <Icon name="Check" size={18} className="text-green-500" />
-                          <span>Доступ ко ВСЕМ ресурсам</span>
-                        </li>
-                        <li className="flex items-center gap-2">
-                          <Icon name="Check" size={18} className="text-green-500" />
-                          <span>Скидка 50% на платные плагины</span>
-                        </li>
-                        <li className="flex items-center gap-2">
-                          <Icon name="Check" size={18} className="text-green-500" />
-                          <span>Админ-панель модератора</span>
-                        </li>
-                        <li className="flex items-center gap-2">
-                          <Icon name="Check" size={18} className="text-green-500" />
-                          <span>Эксклюзивный бейдж</span>
                         </li>
                       </>
                     )}
@@ -435,122 +606,110 @@ function Index() {
             </Card>
           </div>
         )}
-
-        {activeTab === 'purchases' && (
-          <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
-            <Card className="border-border/50">
-              <CardHeader>
-                <CardTitle className="text-2xl">Мои покупки</CardTitle>
-                <CardDescription>История приобретённых ресурсов</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {mockResources.filter(r => r.type === 'paid').slice(0, 3).map(resource => (
-                    <div key={resource.id} className="flex items-center gap-4 p-4 bg-muted/50 rounded-lg">
-                      <img src={resource.image} alt={resource.title} className="w-16 h-16 rounded-md object-cover" />
-                      <div className="flex-1">
-                        <h3 className="font-semibold">{resource.title}</h3>
-                        <p className="text-sm text-muted-foreground">{resource.author}</p>
-                      </div>
-                      <div className="text-right">
-                        <div className="font-bold text-lg">{resource.price}₽</div>
-                        <Button size="sm" variant="outline" className="mt-2">
-                          <Icon name="Download" size={14} className="mr-1" />
-                          Скачать
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        )}
-
-        {activeTab === 'admin' && currentUser.role === 'ultimate' && (
-          <div className="max-w-6xl mx-auto space-y-6 animate-fade-in">
-            <Card className="border-border/50 border-gaming-orange">
-              <CardHeader>
-                <CardTitle className="text-2xl flex items-center gap-2">
-                  <Icon name="Shield" size={24} className="text-gaming-orange" />
-                  Админ-панель
-                </CardTitle>
-                <CardDescription>Модерация и управление пользователями</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Tabs defaultValue="resources">
-                  <TabsList className="grid w-full grid-cols-2">
-                    <TabsTrigger value="resources">Ресурсы</TabsTrigger>
-                    <TabsTrigger value="users">Пользователи</TabsTrigger>
-                  </TabsList>
-                  
-                  <TabsContent value="resources" className="space-y-4 mt-4">
-                    {mockResources.map(resource => (
-                      <div key={resource.id} className="flex items-center gap-4 p-4 bg-muted/50 rounded-lg">
-                        <img src={resource.image} alt={resource.title} className="w-16 h-16 rounded-md object-cover" />
-                        <div className="flex-1">
-                          <h3 className="font-semibold">{resource.title}</h3>
-                          <p className="text-sm text-muted-foreground">{resource.author}</p>
-                        </div>
-                        <Button size="sm" variant="destructive">
-                          <Icon name="Trash2" size={14} className="mr-1" />
-                          Удалить
-                        </Button>
-                      </div>
-                    ))}
-                  </TabsContent>
-                  
-                  <TabsContent value="users" className="space-y-4 mt-4">
-                    <div className="space-y-3">
-                      {['User123', 'ProGamer', 'BuilderX'].map((username, i) => (
-                        <div key={i} className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
-                          <div className="flex items-center gap-3">
-                            <Avatar>
-                              <AvatarFallback>{username[0]}</AvatarFallback>
-                            </Avatar>
-                            <div>
-                              <div className="font-semibold">{username}</div>
-                              <div className="text-sm text-muted-foreground">Роль: Free</div>
-                            </div>
-                          </div>
-                          <div className="flex gap-2">
-                            <Button size="sm" variant="outline" className="bg-gaming-purple/20">
-                              Выдать Premium
-                            </Button>
-                            <Button size="sm" variant="outline" className="bg-gaming-orange/20">
-                              Выдать Ultimate
-                            </Button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </TabsContent>
-                </Tabs>
-              </CardContent>
-            </Card>
-          </div>
-        )}
       </main>
 
-      <footer className="border-t border-border mt-16 py-8">
-        <div className="container mx-auto px-4 text-center text-muted-foreground">
-          <div className="flex items-center justify-center gap-6 mb-4">
-            <Button variant="ghost" size="sm">
-              <Icon name="FileText" size={16} className="mr-2" />
-              Правила
-            </Button>
-            <Button variant="ghost" size="sm">
-              <Icon name="HelpCircle" size={16} className="mr-2" />
-              Поддержка
-            </Button>
-            <Button variant="ghost" size="sm">
-              <Icon name="Send" size={16} className="mr-2" />
-              @nighttimes_owner
-            </Button>
-          </div>
-          <p className="text-sm">© 2024 MineCraft Hub. Платформа для плагинов и сборок</p>
-        </div>
-      </footer>
+      <Dialog open={isDetailDialogOpen} onOpenChange={setIsDetailDialogOpen}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          {selectedResource && (
+            <>
+              <DialogHeader>
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <DialogTitle className="text-2xl">{selectedResource.title}</DialogTitle>
+                    <DialogDescription className="mt-2 text-base">
+                      {selectedResource.description}
+                    </DialogDescription>
+                  </div>
+                  <Badge className={getAccessBadge(selectedResource.access).className}>
+                    {getAccessBadge(selectedResource.access).label}
+                  </Badge>
+                </div>
+              </DialogHeader>
+
+              <div className="space-y-6">
+                <img 
+                  src={selectedResource.image} 
+                  alt={selectedResource.title} 
+                  className="w-full h-64 object-cover rounded-lg"
+                />
+
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="bg-muted/50 p-4 rounded-lg text-center">
+                    <Icon name="Star" size={24} className="mx-auto mb-2 text-yellow-500" />
+                    <div className="text-2xl font-bold">{selectedResource.rating || '—'}</div>
+                    <div className="text-xs text-muted-foreground">Рейтинг</div>
+                  </div>
+                  <div className="bg-muted/50 p-4 rounded-lg text-center">
+                    <Icon name="Download" size={24} className="mx-auto mb-2 text-gaming-blue" />
+                    <div className="text-2xl font-bold">{selectedResource.downloads}</div>
+                    <div className="text-xs text-muted-foreground">Скачиваний</div>
+                  </div>
+                  <div className="bg-muted/50 p-4 rounded-lg text-center">
+                    <Icon name="Package" size={24} className="mx-auto mb-2 text-gaming-purple" />
+                    <div className="text-2xl font-bold">{selectedResource.minecraftVersion}</div>
+                    <div className="text-xs text-muted-foreground">Версия MC</div>
+                  </div>
+                  <div className="bg-muted/50 p-4 rounded-lg text-center">
+                    <Icon name="User" size={24} className="mx-auto mb-2 text-gaming-orange" />
+                    <div className="text-lg font-bold">{selectedResource.author}</div>
+                    <div className="text-xs text-muted-foreground">Автор</div>
+                  </div>
+                </div>
+
+                {selectedResource.fileName && (
+                  <div className="bg-muted/50 p-4 rounded-lg">
+                    <h4 className="font-semibold mb-3 flex items-center gap-2">
+                      <Icon name="FileArchive" size={20} />
+                      Информация о файле
+                    </h4>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Имя файла:</span>
+                        <span className="font-mono">{selectedResource.fileName}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Размер:</span>
+                        <span>{selectedResource.fileSize}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Загружено:</span>
+                        <span>{selectedResource.uploadDate}</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex gap-3">
+                  {canAccess(selectedResource.access) ? (
+                    <>
+                      {selectedResource.type === 'paid' && (
+                        <Button className="flex-1 gradient-primary" size="lg">
+                          <Icon name="ShoppingCart" size={18} className="mr-2" />
+                          Купить за {selectedResource.price}₽
+                        </Button>
+                      )}
+                      {selectedResource.type === 'free' && (
+                        <Button className="flex-1 bg-green-600 hover:bg-green-700" size="lg">
+                          <Icon name="Download" size={18} className="mr-2" />
+                          Скачать бесплатно
+                        </Button>
+                      )}
+                    </>
+                  ) : (
+                    <Button className="flex-1 gradient-accent" size="lg" disabled>
+                      <Icon name="Lock" size={18} className="mr-2" />
+                      Нужен {selectedResource.access === 'ultimate' ? 'Ultimate' : 'Premium'}
+                    </Button>
+                  )}
+                  <Button variant="outline" size="lg">
+                    <Icon name="Heart" size={18} />
+                  </Button>
+                </div>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
